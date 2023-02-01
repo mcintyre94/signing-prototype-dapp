@@ -59,6 +59,10 @@ export const AppBar: React.FC = () => {
               href="/"
               navigationStarts={() => setIsNavOpen(false)}
             />
+            <NavElement
+              label="Github (source)"
+              href="https://github.com/mcintyre94/signing-prototype-dapp"
+            />
             <WalletMultiButtonDynamic className="btn-ghost btn-sm rounded-btn text-lg mr-6 " />
           </div>
           <label
