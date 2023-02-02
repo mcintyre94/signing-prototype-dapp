@@ -42,8 +42,6 @@ export const HomeView: FC = ({ }) => {
   // signature
   const [signature, setSignature] = useState('')
 
-
-
   // Make requests
   async function getRequest() {
     const res = await fetch(signingApiUrl, { method: 'GET' })
@@ -71,7 +69,8 @@ export const HomeView: FC = ({ }) => {
   }
 
   async function signData() {
-    const dataUint8Array = new TextEncoder().encode(data)
+
+    const dataUint8Array = Buffer.from(data, 'base64') // new TextEncoder().encode(data)
     const sig = await wallet.signMessage(dataUint8Array)
     const sigBase64 = Buffer.from(sig).toString('base64')
     setSignature(sigBase64)
@@ -112,7 +111,7 @@ export const HomeView: FC = ({ }) => {
         <hr className='divider' />
 
         <section className='flex flex-col gap-4 items-start'>
-          <h4 className="md:w-full text-3xl text-center text-slate-300 my-2">
+          <h4 className="md:w-full text-3xl text-slate-300 my-2">
             <p>Step 1: GET Request</p>
           </h4>
           <button className='btn max-w-fit' onClick={getRequest}>Request</button>
@@ -123,7 +122,7 @@ export const HomeView: FC = ({ }) => {
         <hr className='divider' />
 
         <section className='flex flex-col gap-4 items-start'>
-          <h4 className="md:w-full text-3xl text-center text-slate-300 my-2">
+          <h4 className="md:w-full text-3xl text-slate-300 my-2">
             <p>Step 2: POST Request</p>
           </h4>
           <button className='btn max-w-fit' onClick={postRequest} disabled={!wallet.connected}>Request</button>
@@ -137,7 +136,7 @@ export const HomeView: FC = ({ }) => {
         <hr className='divider' />
 
         <section className='flex flex-col gap-4 items-start'>
-          <h4 className="md:w-full text-3xl text-center text-slate-300 my-2">
+          <h4 className="md:w-full text-3xl text-slate-300 my-2">
             <p>Step 3: Sign the data</p>
           </h4>
           <button className='btn max-w-fit' onClick={signData} disabled={!wallet.connected || !data}>Request</button>
@@ -148,13 +147,12 @@ export const HomeView: FC = ({ }) => {
         <hr className='divider' />
 
         <section className='flex flex-col gap-4 items-start'>
-          <h4 className="md:w-full text-3xl text-center text-slate-300 my-2">
+          <h4 className="md:w-full text-3xl text-slate-300 my-2">
             <p>Step 4: PUT Request</p>
           </h4>
           <button className='btn max-w-fit' onClick={putRequest} disabled={!signature}>Request</button>
           {!signature && <p className='text-sm'>Requires signature</p>}
         </section>
-
       </div>
     </div>
   );

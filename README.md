@@ -2,6 +2,10 @@
 
 This repo includes a dapp displaying the proposed data flow for Solana Pay message signing. It includes a simple implementation of each of the GET/POST/PUT routes, and a UI to call them one at a time and display their results. It uses a connected wallet to sign the message.
 
+## Cryptography
+
+The cryptography used in this repo **has not been audited** and is included for illustrative purposes only.
+
 ## Getting Started
 
 This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
