@@ -1,18 +1,10 @@
-// Next, React
-import { FC, useEffect, useState } from 'react';
-import Link from 'next/link';
-
-// Wallet
+import { FC, useEffect, useMemo, useState } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-
-// Components
-import { RequestAirdrop } from '../../components/RequestAirdrop';
-import pkg from '../../../package.json';
-
-// Store
 import useUserSOLBalanceStore from '../../stores/useUserSOLBalanceStore';
 import { ErrorResponse, GetResponse, PostRequest, PostResponse, PutRequest } from 'pages/api/signing';
 import { notify } from 'utils/notifications';
+import Pusher from 'pusher-js';
+import { v4 as uuid } from 'uuid'
 
 export const HomeView: FC = ({ }) => {
   const wallet = useWallet();
@@ -28,7 +20,21 @@ export const HomeView: FC = ({ }) => {
     }
   }, [wallet.publicKey, connection, getUserSOLBalance])
 
-  const signingApiUrl = "/api/signing"
+  const channelId = useMemo(() => uuid(), [])
+
+  const signingApiUrl = `/api/signing?channelId=${channelId}`
+
+  useEffect(() => {
+    const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_APP_KEY, {
+      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER
+    });
+
+    const channel = pusher.subscribe(channelId);
+    channel.bind('account-connected', function ({ message }) {
+      setServerMessage(message)
+      notify({ type: 'success', message })
+    });
+  }, [channelId]);
 
   // get request
   const [label, setLabel] = useState('')
@@ -41,6 +47,9 @@ export const HomeView: FC = ({ }) => {
 
   // signature
   const [signature, setSignature] = useState('')
+
+  // server message
+  const [serverMessage, setServerMessage] = useState<string | undefined>(undefined)
 
   // Make requests
   async function getRequest() {
@@ -69,7 +78,6 @@ export const HomeView: FC = ({ }) => {
   }
 
   async function signData() {
-
     const dataUint8Array = Buffer.from(data, 'base64') // new TextEncoder().encode(data)
     const sig = await wallet.signMessage(dataUint8Array)
     const sigBase64 = Buffer.from(sig).toString('base64')
@@ -94,8 +102,6 @@ export const HomeView: FC = ({ }) => {
     if (res.status >= 400) {
       const json = await res.json() as ErrorResponse
       notify({ type: 'error', message: json.message })
-    } else {
-      notify({ type: 'success', message: "Signature validated!" })
     }
   }
 
@@ -107,6 +113,16 @@ export const HomeView: FC = ({ }) => {
             Message Signing Test
           </h1>
         </div>
+
+        <hr className='divider' />
+
+        <section className='flex flex-col gap-4 items-start'>
+          <h4 className="md:w-full text-3xl text-slate-300 my-2">
+            Server Messages
+          </h4>
+          <p>Channel ID: {channelId}</p>
+          <p>{serverMessage ?? "Waiting for server message..."}</p>
+        </section>
 
         <hr className='divider' />
 

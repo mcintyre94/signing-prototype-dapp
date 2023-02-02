@@ -3,6 +3,7 @@ import { randomBytes, scryptSync } from "crypto";
 import { NextApiRequest, NextApiResponse } from "next";
 import { sign } from "tweetnacl";
 import { EncryptedData, toDecrypted, toEncrypted, toHmac } from "utils/crypto";
+import Pusher from "pusher";
 
 export type GetResponse = {
   label: string;
@@ -150,6 +151,7 @@ function postHandler(
 
 function putHandler(
   input: PutRequest,
+  channelId: string,
   res: NextApiResponse<{} | ErrorResponse>
 ) {
   const { account, data, state, signature } = input;
@@ -238,6 +240,19 @@ function putHandler(
     return res.status(400).json({ message: "Invalid signature" });
   }
 
+  const pusher = new Pusher({
+    appId: process.env.PUSHER_APP_ID,
+    key: process.env.NEXT_PUBLIC_PUSHER_APP_KEY,
+    secret: process.env.PUSHER_SECRET,
+    cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
+    useTLS: true,
+  });
+
+  pusher.trigger(channelId, "account-connected", {
+    message: `GM from server! Connected to account ${account}`,
+    account,
+  });
+
   return res.status(200).json({});
 }
 
@@ -250,7 +265,8 @@ export default function handler(
   } else if (req.method === "POST") {
     return postHandler(req.body as PostRequest, res);
   } else if (req.method === "PUT") {
-    return putHandler(req.body as PutRequest, res);
+    const channelId = req.query.channelId as string;
+    return putHandler(req.body as PutRequest, channelId, res);
   } else {
     res.status(405).json({ message: `Unexpected method ${req.method}` });
   }
