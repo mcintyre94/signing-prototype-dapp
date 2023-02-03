@@ -25,6 +25,8 @@ export const HomeView: FC = ({ }) => {
   const signingApiUrl = `/api/signing?channelId=${channelId}`
 
   useEffect(() => {
+    Pusher.logToConsole = true;
+
     const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_APP_KEY, {
       cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER
     });

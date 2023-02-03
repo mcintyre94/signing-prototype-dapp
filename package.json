@@ -13,6 +13,7 @@
   "dependencies": {
     "@heroicons/react": "^1.0.5",
     "@noble/ed25519": "^1.7.1",
+    "@solana/pay": "^0.2.4",
     "@solana/wallet-adapter-base": "^0.9.20",
     "@solana/wallet-adapter-react": "^0.15.28",
     "@solana/wallet-adapter-react-ui": "^0.9.27",
@@ -36,6 +37,7 @@
   "devDependencies": {
     "@types/node": "^18.11.18",
     "@types/react": "^18.0.27",
+    "@types/uuid": "^9.0.0",
     "autoprefixer": "^10.4.2",
     "eslint": "8.7.0",
     "eslint-config-next": "^13.1.5",

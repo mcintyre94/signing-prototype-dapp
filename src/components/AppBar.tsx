@@ -60,6 +60,11 @@ export const AppBar: React.FC = () => {
               navigationStarts={() => setIsNavOpen(false)}
             />
             <NavElement
+              label="Mobile"
+              href="/mobile"
+              navigationStarts={() => setIsNavOpen(false)}
+            />
+            <NavElement
               label="Github (source)"
               href="https://github.com/mcintyre94/signing-prototype-dapp"
             />
