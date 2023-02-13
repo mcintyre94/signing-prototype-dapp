@@ -32,7 +32,7 @@
     "react-dom": "^18.2.0",
     "tweetnacl": "^1.0.3",
     "uuid": "^9.0.0",
-    "zustand": "^3.6.9"
+    "zustand": "^4.3.3"
   },
   "devDependencies": {
     "@types/node": "^18.11.18",
