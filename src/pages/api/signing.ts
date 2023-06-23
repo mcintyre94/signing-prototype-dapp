@@ -1,9 +1,9 @@
 import { PublicKey } from "@solana/web3.js";
 import { randomBytes, scryptSync } from "crypto";
 import { NextApiRequest, NextApiResponse } from "next";
-import { sign } from "tweetnacl";
 import { EncryptedData, toDecrypted, toEncrypted, toHmac } from "utils/crypto";
 import Pusher from "pusher";
+import { createSignInMessageText, parseSignInMessage, verifyMessageSignature } from "@solana/wallet-standard-util";
 
 export type GetResponse = {
   label: string;
@@ -31,20 +31,15 @@ export type ErrorResponse = {
   message: string;
 };
 
-// Data structure that is encrypted as part of state
-type EncryptState = {
-  hmac: string;
-  account: string;
-  expirationTimestamp: number;
-  nonce: string;
-};
-
 // Data structure that is encoded as state
 type SerializeState = {
   encryptedData: string;
   salt: string;
   iv: string;
 };
+
+const DOMAIN = "example.com";
+const CHAIN_ID = "devnet";
 
 // Get signing password from environment variable, return error if not set
 function getSigningPassword(): Buffer | undefined {
@@ -88,53 +83,35 @@ function postHandler(
   if (!signingPassword)
     return res.status(500).json({ message: "Server signing password not set" });
 
-  // Generate data
-  // Loosely based on SIWE example message: https://eips.ethereum.org/EIPS/eip-4361#example-message
+  // Generate the sign-in message
   const timestamp = Date.now();
   const expirationTimestamp = timestamp + 60_000; // valid for 1 min
-  const nonce = randomBytes(20).toString("base64");
 
-  const message = `example.com wants you to sign in with your Solana account:
-  ${account}
-  
-  Please sign in to connect your account!
-  
-  URI: https://example.com/login
-  Version: 1
-  Chain ID: mainnet
-  Nonce: ${nonce}
-  Issued At: ${new Date(timestamp).toISOString()}
-  Expiration Time: ${new Date(expirationTimestamp).toISOString()}`;
+  const messageText = createSignInMessageText({
+    domain: DOMAIN,
+    address: account,
+    statement: "Please sign in to connect your account!",
+    uri: "https://example.com/login",
+    version: "1",
+    chainId: CHAIN_ID,
+    nonce: randomBytes(20).toString("base64"),
+    issuedAt: new Date(timestamp).toISOString(),
+    expirationTime: new Date(expirationTimestamp).toISOString()
+  });
 
-  const data = Buffer.from(message);
+  const message = Buffer.from(messageText);
 
-  // Generate state
-  let hmac = toHmac(data, signingPassword);
+  // Generate hmac of the data
+  let hmac = toHmac(message, signingPassword);
 
-  // Include account, expiry timestamp and nonce to verify later
-  const toEncrypt: EncryptState = {
-    hmac: hmac.digest("base64"),
-    account,
-    expirationTimestamp,
-    nonce,
-  };
-
-  // encrypt the state before returning
+  // encrypt the hmac before returning as state
   const salt = randomBytes(32);
   const key = scryptSync(encryptionPassword, salt, 32); // 32-byte key
-  console.log({ key: key.toString("base64") });
 
   const { encryptedData, iv } = toEncrypted(
-    Buffer.from(JSON.stringify(toEncrypt)),
+    Buffer.from(hmac.digest("base64")),
     key
   );
-
-  console.log({
-    encrypt: true,
-    key: key.toString("base64"),
-    salt: salt.toString("base64"),
-    iv: iv.toString("base64"),
-  });
 
   const state: SerializeState = {
     encryptedData: encryptedData.toString("base64"),
@@ -142,8 +119,9 @@ function postHandler(
     iv: iv.toString("base64"),
   };
 
+  // Return the message as data + state
   return res.status(200).json({
-    data: data.toString("base64"),
+    data: message.toString("base64"),
     state: Buffer.from(JSON.stringify(state)).toString("base64"),
     message: "Please sign to connect your account!",
   });
@@ -159,7 +137,7 @@ function putHandler(
   const stateBuffer = Buffer.from(state, "base64");
   const signatureBuffer = Buffer.from(signature, "base64");
 
-  // validate account
+  // validate account is a public key
   let publicKeyBuffer: Buffer = null;
   try {
     publicKeyBuffer = new PublicKey(account).toBuffer();
@@ -173,8 +151,8 @@ function putHandler(
     return res.status(500).json({ message: "Server signing password not set" });
 
   const encryptionPassword = getEncryptionPassword();
-  if (!signingPassword)
-    return res.status(500).json({ message: "Server signing password not set" });
+  if (!encryptionPassword)
+    return res.status(500).json({ message: "Server encryption password not set" });
 
   // Extract fields from state
   const { encryptedData, salt, iv } = JSON.parse(
@@ -185,7 +163,7 @@ function putHandler(
   const saltBuffer = Buffer.from(salt, "base64");
   const ivBuffer = Buffer.from(iv, "base64");
 
-  // Decrypt state encrypteData field
+  // Decrypt state encryptedData field
   const key = scryptSync(encryptionPassword, saltBuffer, 32);
   const encrypted: EncryptedData = {
     encryptedData: encryptedDataBuffer,
@@ -200,46 +178,52 @@ function putHandler(
     return res.status(400).json({ message: "Error decrypting state" });
   }
 
-  console.log(decrypted.toString());
-
-  const {
-    hmac,
-    account: decryptedAccount,
-    expirationTimestamp,
-    nonce,
-  } = JSON.parse(decrypted.toString()) as EncryptState;
-
   // Check hmac
-  const expectedHmac = toHmac(dataBuffer, signingPassword);
-  if (hmac !== expectedHmac.digest("base64")) {
+  const hmac = decrypted.toString();
+  const expectedHmac = toHmac(dataBuffer, signingPassword).digest("base64");
+  if (hmac !== expectedHmac) {
     return res.status(400).json({ message: "Data didn't match expected hash" });
   }
 
-  // Check account === decrypted.account
-  if (account !== decryptedAccount) {
+  // Parse fields from the sign in message
+  const signInMessage = parseSignInMessage(dataBuffer);
+
+  // Check domain is correct
+  if (signInMessage.domain !== DOMAIN) {
+    return res.status(400).json({ message: "Unexpected domain" });
+  }
+
+  // Check account passed in request === sign in message address
+  if (signInMessage.address !== account) {
     return res.status(400).json({ message: "Unexpected account" });
   }
 
-  // Check timestamp, reject if older than 1min
+  // Check chainId is devnet
+  if (signInMessage.chainId !== CHAIN_ID) {
+    return res.status(400).json({ message: "Unexpected chainId" })
+  }
+
+  // Check timestamp, reject if expired
+  const expirationTimestamp = new Date(signInMessage.expirationTime).getTime()
   if (Date.now() > expirationTimestamp) {
     return res.status(400).json({ message: "Data is expired" });
   }
 
-  // Check nonce in message
-  if (!dataBuffer.toString().includes(nonce)) {
-    return res.status(400).json({ message: "Nonce doesn't match" });
-  }
-
-  // Verify signature
-  const isVerified = sign.detached.verify(
-    dataBuffer,
-    signatureBuffer,
-    publicKeyBuffer
-  );
+  // Verify message is signed by the expected public key
+  const isVerified = verifyMessageSignature({
+    // we use the dataBuffer for both message and signedMessage
+    // the hmac checks guarantee that the signed message 
+    // is the same as the message we asked the user to sign 
+    message: dataBuffer,
+    signedMessage: dataBuffer,
+    signature: signatureBuffer,
+    publicKey: publicKeyBuffer,
+  });
   if (!isVerified) {
     return res.status(400).json({ message: "Invalid signature" });
   }
 
+  // All checks complete, trigger a websocket message
   const pusher = new Pusher({
     appId: process.env.PUSHER_APP_ID,
     key: process.env.NEXT_PUBLIC_PUSHER_APP_KEY,
@@ -270,6 +254,4 @@ export default function handler(
   } else {
     res.status(405).json({ message: `Unexpected method ${req.method}` });
   }
-
-  // res.status(200).json({ name: 'John Doe' })
 }
